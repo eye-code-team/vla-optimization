@@ -1,0 +1,29 @@
+services:
+  smolvla_dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        USER_UID: ${UID:-1000}
+        USER_GID: ${GID:-1000}
+    image: ${IMAGE_NAME:-smolvla-finetune:latest}
+    container_name: ${CONTAINER_NAME:-smolvla_dev}
+    gpus: all
+    ipc: host
+    stdin_open: true
+    tty: true
+    working_dir: /workspace/project
+    command: bash
+    environment:
+      OUTPUT_ROOT: /outputs
+      OUTPUT_NAME: ${OUTPUT_NAME:-dynamic_lora_pruning_snapflow}
+      HF_HOME: /home/vla_user/.cache/huggingface
+      PYTHONUNBUFFERED: "1"
+      WANDB_MODE: ${WANDB_MODE:-offline}
+      HF_TOKEN: ${HF_TOKEN:-}
+    volumes:
+      - ./:/workspace/project
+      - ${DATASET_ROOT:-./data/datasets}:/datasets
+      - ${CHECKPOINT_ROOT:-./data/checkpoints}:/checkpoints
+      - ${OUTPUT_ROOT_HOST:-./outputs}:/outputs
+      - ${HF_CACHE_ROOT:-./data/hf_cache}:/home/vla_user/.cache/huggingface

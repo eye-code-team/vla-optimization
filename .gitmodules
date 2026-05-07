@@ -1,0 +1,6 @@
+[submodule "lerobot"]
+	path = lerobot
+	url = https://github.com/huggingface/lerobot.git
+[submodule "MoLe_VLA"]
+	path = MoLe_VLA
+	url = https://github.com/RoyZry98/MoLe-VLA-Pytorch.git
