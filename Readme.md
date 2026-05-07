@@ -12,13 +12,7 @@ This repository contains the Docker-based setup and training scripts for the Smo
 Use the published Docker image to run the code in a reproducible environment:
 
 ```bash
-docker pull ghcr.io/eye-code-team/vla-optimization:latest
-```
-
-If the image is also published on Docker Hub, you can use:
-
-```bash
-docker pull docker.io/eye-code-team/vla-optimization:latest
+docker pull ghcr.io/annn-ds/vla-optimization:latest
 ```
 
 ## Prerequisites
@@ -60,7 +54,7 @@ This creates the standard host folders:
 4. Pull the Docker image:
 
 ```bash
-docker pull ghcr.io/eye-code-team/vla-optimization:latest
+docker pull ghcr.io/annn-ds/vla-optimization:latest
 ```
 
 5. Start a container with mounted code, datasets, checkpoints, and outputs:
@@ -74,7 +68,7 @@ docker run --gpus all -it --user $(id -u):$(id -g) \
   -v $PWD/data/checkpoints:/checkpoints \
   -v $PWD/outputs:/outputs \
   -w /workspace/your_project \
-  ghcr.io/eye-code-team/vla-optimization:latest bash
+  ghcr.io/annn-ds/vla-optimization:latest bash
 ```
 
 6. Inside the container, run the training script:
