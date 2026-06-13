@@ -1,0 +1,53 @@
+# SmolVLA-LIBERO hierarchical pipeline — curated, pinned to the working env
+# (Python 3.10, torch 2.6.0+cu124). torch/torchvision installed separately.
+# lerobot installed with --no-deps in Dockerfile to avoid hub version conflict.
+# rerun-sdk installed with --no-deps in Dockerfile (requires numpy>=2, conflicts).
+
+# ── Core ML stack ─────────────────────────────────────────────────────────────
+transformers==5.5.3
+huggingface-hub==1.10.1
+safetensors==0.5.3
+datasets==4.8.4
+accelerate
+diffusers>=0.27.2,<0.36.0
+einops
+
+# ── lerobot 0.4.4 runtime deps (installed --no-deps, so listed manually) ──────
+draccus==0.10.0
+jsonlines>=4.0.0
+packaging>=24.2
+termcolor>=2.4.0
+deepdiff>=7.0.1
+gymnasium>=1.1.1
+imageio[ffmpeg]>=2.34.0,<3.0.0
+setuptools>=71.0.0
+pyserial>=3.5,<4.0
+pynput>=1.7.7,<1.9.0
+cmake>=3.29.0
+num2words
+
+# ── LIBERO simulation stack (rollout eval) ────────────────────────────────────
+robosuite==1.4.1
+mujoco==3.9.0
+bddl==3.6.0
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+numpy==1.26.4
+easydict
+h5py
+# old OpenAI gym (LIBERO uses `import gym`, not gymnasium)
+gym==0.26.2
+cloudpickle
+Pillow
+PyYAML
+hydra-core
+scipy
+lxml
+thop
+wandb
+opencv-python-headless==4.10.0.84
+matplotlib
+pandas
+tqdm
+imageio-ffmpeg
+av>=15.0.0

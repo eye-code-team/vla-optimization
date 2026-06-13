@@ -1,0 +1,37 @@
+# =====================================================================
+#  docker-compose for the SmolVLA-LIBERO pipeline (GPU server: 2x RTX 4090)
+#  Usage:
+#    docker compose build
+#    docker compose run --rm smolvla            # interactive shell
+#    docker compose run --rm smolvla python check_env.py  (via /opt/check_env.py)
+#  Big assets (HF models, dataset) live OUTSIDE the image as bind mounts so the
+#  image stays small and rebuilds are fast.
+# =====================================================================
+services:
+  smolvla:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: smolvla-libero:latest
+    container_name: smolvla_libero
+    gpus: all                 # needs nvidia-container-toolkit on the host
+    ipc: host                 # shared memory for dataloaders
+    shm_size: "16gb"
+    stdin_open: true
+    tty: true
+    working_dir: /workspace/project
+    environment:
+      PYTHONIOENCODING: "utf-8"
+      MUJOCO_GL: "egl"        # set to "osmesa" if the host has no EGL
+      HF_HOME: /root/.cache/huggingface
+      HF_TOKEN: ${HF_TOKEN:-}            # pass via shell env, do NOT hardcode
+      # Restrict to a single GPU if desired, e.g. CUDA_VISIBLE_DEVICES=0
+      CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-0}
+    volumes:
+      # Project code + data/ + outputs/ — edit on host, run in container.
+      # The pipeline reads dataset at data/datasets/... and writes outputs/...
+      - ./project:/workspace/project
+      # HF model cache (smolvla_libero) and LIBERO mesh assets — persist rebuilds.
+      - ./hf_cache:/root/.cache/huggingface
+      - ./libero_cache:/root/.cache/libero
+    command: bash

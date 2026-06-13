@@ -1,0 +1,42 @@
+# Dataset files (large, not tracked)
+data/
+*.hdf5
+*.parquet
+*.h5
+
+# Model checkpoints
+outputs/
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# HuggingFace / model caches
+hf_cache/
+libero_cache/
+.cache/
+
+# Logs
+*.log
+nohup.out
+log_*.txt
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+*.sock
