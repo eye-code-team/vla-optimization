@@ -80,9 +80,10 @@ parser.add_argument("--img_size", type=int, default=256,
     help="Image size fed to SmolVLA (default: 256 to match training)")
 parser.add_argument("--no_flip", action="store_true",
     help="Disable vertical image flip (for A/B testing the flip fix)")
-parser.add_argument("--settle_steps", type=int, default=20,
-    help="No-op env steps after set_init_state to let the scene settle "
-         "(LIBERO standard ~10-20; set 0 to disable)")
+parser.add_argument("--settle_steps", type=int, default=5,
+    help="No-op zero-action steps after set_init_state before the policy runs. "
+         "LIBERO official protocol uses 5 (libero/lifelong/metric.py:120). "
+         "Increase if physics settling is unstable.")
 parser.add_argument("--no_skip", action="store_true",
     help="Run the FULL model (no layer skipping). The training task loss is "
          "computed on the full model — skipping is never applied during training "
@@ -108,15 +109,6 @@ parser.add_argument("--video_fps", type=int, default=20,
     help="FPS for saved videos (default: 20)")
 parser.add_argument("--no_adp", action="store_true",
     help="Disable ADP token pruning (layer-skip only). Use to ablate DTP vs DLS.")
-parser.add_argument("--eval_episodes_json", type=str,
-    default="data/datasets/libero_10_full_eval_episodes.json",
-    help="JSON file listing held-out eval episode indices per task. "
-         "Init states are selected from these indices so eval never touches "
-         "training demos. Default: libero_10_full_eval_episodes.json (5 eval/task, "
-         "demo indices 45-49 of each task).")
-parser.add_argument("--no_eval_split", action="store_true",
-    help="Ignore --eval_episodes_json and use all init states (not recommended "
-         "— may evaluate on training demos).")
 args = parser.parse_args()
 
 DEVICE = args.device if (args.device.startswith("cuda") and torch.cuda.is_available()) else "cpu"
@@ -156,46 +148,15 @@ if NORMALIZE:
     A_STD  = np.array(_stt["action"]["std"],  np.float32).ravel()
     print(f"  [NORMALIZE] MEAN_STD on state(in)/action(out) from {_STATS_PATH}")
 
-# ── Eval episodes: per-SUITE-task demo indices (held-out, never seen in training) ──
-# libero_10_full: 50 demos/task, first 45 = train, last 5 (indices 45-49) = eval.
-# suite.get_task_init_states(task_idx) returns 50 init states in HDF5 demo order
-# (0-based within each task).  Eval always uses within-task indices 45-49.
-#
-# The JSON also stores suite_to_dataset_task_index to confirm the task mapping.
-import json as _ejson
-
-_EVAL_INITS_PER_TASK: dict[int, list[int]] = {}   # suite task_idx → [within-task demo indices]
-if not args.no_eval_split:
-    _ej_path = args.eval_episodes_json
-    try:
-        with open(_ej_path) as _ef:
-            _ej = _ejson.load(_ef)
-        _summary = _ej.get("dataset_task_summary", {})
-        _suite2ds = _ej.get("suite_to_dataset_task_index", {})
-        if _summary and _suite2ds:
-            # For each suite task index, find the corresponding dataset task,
-            # then derive within-task eval demo indices from ep_range + num_train.
-            for _suite_ti_str, _ds_ti in _suite2ds.items():
-                _suite_ti = int(_suite_ti_str)
-                _ds_info  = _summary[str(_ds_ti)]
-                _ep_start = _ds_info["ep_range"][0]
-                _num_train = _ds_info["num_train"]
-                _num_test  = _ds_info["num_test"]
-                # Within-task demo indices for eval = [num_train, ..., num_train+num_test-1]
-                _EVAL_INITS_PER_TASK[_suite_ti] = list(range(_num_train, _num_train + _num_test))
-        else:
-            # Fallback: all tasks have 45 train + 5 eval → within-task demos 45-49
-            for _ti in range(20):
-                _EVAL_INITS_PER_TASK[_ti] = list(range(45, 50))
-        print(f"  [EVAL SPLIT] Loaded eval split from {_ej_path}")
-        print(f"    → within-task demo indices (sample suite task 0): {_EVAL_INITS_PER_TASK.get(0, [])}")
-    except Exception as _ee:
-        print(f"  [EVAL SPLIT] WARNING: could not load {_ej_path}: {_ee}")
-        print(f"    → Falling back to last 5 demos (indices 45-49) per task")
-        for _ti in range(20):
-            _EVAL_INITS_PER_TASK[_ti] = list(range(45, 50))
-else:
-    print("  [EVAL SPLIT] --no_eval_split: using ALL init states (may include training demos)")
+# ── LIBERO init states protocol ───────────────────────────────────────────────
+# suite.get_task_init_states(task_idx) loads from pre-sampled .pruned_init files
+# (libero/benchmark/__init__.py:158).  These 50 states are sampled INDEPENDENTLY
+# from the HDF5 demo files — they are NOT in demo order and have NO overlap with
+# training demo init states.  The LIBERO official eval uses ALL 50 states for
+# evaluation, cycling as needed (metric.py:111):
+#   indices = np.arange(i * env_num, (i + 1) * env_num) % init_states.shape[0]
+# Standard: 20 rollouts per task, cycling through the 50 pre-sampled states.
+# There is no train/test split for init states.
 
 
 def _normalize_state(state_np):
@@ -825,17 +786,12 @@ def eval_suite(model_label, policy_fn, reset_fn=None):
         task_latencies = []
 
         video_saved = False
-        # Which demo indices to use for this task's rollouts
-        _eval_demo_ids = _EVAL_INITS_PER_TASK.get(task_idx) if _EVAL_INITS_PER_TASK else None
 
         for rollout_i in range(N_ROLLOUTS):
-            # Pick init state from held-out eval demos (e.g. indices 45-49),
-            # falling back to all inits if eval split is disabled.
-            if _eval_demo_ids:
-                _demo_idx = _eval_demo_ids[rollout_i % len(_eval_demo_ids)]
-                init_state = inits[_demo_idx % len(inits)]
-            else:
-                init_state = inits[rollout_i % len(inits)]
+            # Cycle through all 50 pre-sampled init states (LIBERO official protocol).
+            # These states are independent from HDF5 demo init states — no train/test
+            # overlap concern.  Standard: 20 rollouts, cycling inits[0..19].
+            init_state = inits[rollout_i % len(inits)]
 
             # Record video for rollout 0 only (to limit overhead)
             do_record = args.save_video and not video_saved

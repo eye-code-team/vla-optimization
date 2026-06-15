@@ -78,13 +78,30 @@ Key eval flags:
 
 | Flag | Meaning |
 |------|---------|
-| `--no_flip` | Training data is HDF5 native (upside-down); eval env renders the same — no flip needed |
-| `--no_skip` | Task loss during training used the full model; skip gates are not applied at train time |
-| `--n_rollouts 5` | Uses all 5 held-out eval demos (indices 45–49) per task |
+| `--no_flip` | HDF5 images are stored in raw MuJoCo orientation (upside-down); eval env renders the same — no flip needed to match training |
+| `--no_skip` | Training task loss is computed on the full model (skip gates are not applied during training forward pass); use full model at eval to match |
+| `--n_rollouts 20` | LIBERO official protocol: 20 rollouts per task |
 
 The eval script automatically:
 - Loads stats from `data/datasets/libero_10_full/meta/stats.json` (matches training)
-- Uses held-out init states from `libero_10_full_eval_episodes.json` (never seen during training)
+- Uses LIBERO's pre-sampled init states (`suite.get_task_init_states()`) — these are **independent** from HDF5 demo init states, so there is no train/test contamination concern
+
+### LIBERO evaluation protocol (from source)
+
+Based on reading `libero/benchmark/__init__.py`, `libero/lifelong/metric.py`, and `libero/envs/env_wrapper.py`:
+
+| Parameter | Official value | Our script |
+|-----------|---------------|------------|
+| Init states | 50 pre-sampled per task (`.pruned_init` files, independent from demo HDF5) | ✓ `suite.get_task_init_states()` |
+| Rollouts / task | 20 | ✓ `--n_rollouts 20` |
+| Max horizon | 600 steps | ✓ `--horizon 600` |
+| Settle steps | 5 zero-action steps after `set_init_state()` | ✓ `--settle_steps 5` |
+| Image size | 128×128 (official policies); 256×256 for our fine-tuned model (trained on 256×256 HDF5) | ✓ `--img_size 256` |
+| Image normalization | uint8 → float32 ÷ 255 | ✓ |
+| Camera obs keys | `agentview_image`, `robot0_eye_in_hand_image` | ✓ |
+| Action space | 7-DOF delta EEF (OSC\_POSE): Δxyz + Δaxis\_angle + gripper | ✓ |
+| Success check | `env.check_success()` → BDDL predicate conjunction (all sub-goals must hold simultaneously) | ✓ |
+| Success metric | `n_success / n_rollouts` per task → mean across all tasks | ✓ |
 
 ## File Overview
 
