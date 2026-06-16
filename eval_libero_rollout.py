@@ -785,7 +785,11 @@ def eval_suite(model_label, policy_fn, reset_fn=None):
         task_successes = 0
         task_latencies = []
 
-        video_saved = False
+        # Video: record every rollout; at end save the first SUCCESS (or fallback
+        # to rollout 0 if all fail).  LIBERO video_utils.py flips with [::-1] for
+        # human-readable orientation — we do the same with np.flipud().
+        best_frames  = None   # frames of first success (or rollout 0 if no success)
+        best_success = False  # whether best_frames is a success rollout
 
         for rollout_i in range(N_ROLLOUTS):
             # Cycle through all 50 pre-sampled init states (LIBERO official protocol).
@@ -793,8 +797,7 @@ def eval_suite(model_label, policy_fn, reset_fn=None):
             # overlap concern.  Standard: 20 rollouts, cycling inits[0..19].
             init_state = inits[rollout_i % len(inits)]
 
-            # Record video for rollout 0 only (to limit overhead)
-            do_record = args.save_video and not video_saved
+            do_record = args.save_video and (not best_success)
 
             try:
                 success, n_steps, lats, frames = run_rollout(
@@ -804,31 +807,38 @@ def eval_suite(model_label, policy_fn, reset_fn=None):
                     task_successes += 1
                 task_latencies.extend(lats)
 
-                # Save video for this rollout
                 if do_record and frames:
-                    try:
-                        import imageio
-                        vid_dir = OUTPUT_DIR / "videos"
-                        vid_dir.mkdir(parents=True, exist_ok=True)
-                        tag = "success" if success else "fail"
-                        vid_path = vid_dir / f"task{task_idx:02d}_{task.name[:40]}_{tag}.mp4"
-                        # MuJoCo renders upside-down — flip each frame
-                        imageio.mimwrite(
-                            str(vid_path),
-                            [np.flipud(f) for f in frames],
-                            fps=args.video_fps,
-                            macro_block_size=None,
-                        )
-                        print(f"    [video] saved → {vid_path.name}  ({len(frames)} frames)")
-                        video_saved = True
-                    except Exception as ve:
-                        print(f"    [video] save failed: {ve}")
+                    if success and not best_success:
+                        # First success — this is the best video
+                        best_frames  = frames
+                        best_success = True
+                    elif best_frames is None:
+                        # No success yet — keep rollout 0 as fallback
+                        best_frames = frames
             except Exception as e:
                 print(f"\n    Rollout {rollout_i} task {task_idx} failed: {e}")
 
             # Reset policy context each episode
             if hasattr(smolvla, 'reset'):
                 smolvla.reset()
+
+        # Save best video after all rollouts for this task
+        if args.save_video and best_frames:
+            try:
+                import imageio
+                vid_dir = OUTPUT_DIR / "videos"
+                vid_dir.mkdir(parents=True, exist_ok=True)
+                tag = "success" if best_success else "fail"
+                vid_path = vid_dir / f"task{task_idx:02d}_{task.name[:40]}_{tag}.mp4"
+                imageio.mimwrite(
+                    str(vid_path),
+                    [np.flipud(f) for f in best_frames],
+                    fps=args.video_fps,
+                    macro_block_size=None,
+                )
+                print(f"    [video] saved → {vid_path.name}  ({len(best_frames)} frames, {tag})")
+            except Exception as ve:
+                print(f"    [video] save failed: {ve}")
 
         env.close()
         del env
